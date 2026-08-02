@@ -1,0 +1,154 @@
+-- Standalone Weapon Spawner for MM2 (with inventory refresh)
+local plr = game.Players.LocalPlayer
+local rs = game:GetService("ReplicatedStorage")
+
+-- Helper: Get a random mystery box (same as original)
+local function getRandomBox()
+    local success, boxes = pcall(function()
+        return require(rs.Database.Sync.MysteryBox)
+    end)
+    if not success or not boxes or next(boxes) == nil then
+        return "StandardBox"
+    end
+    local boxNames = {}
+    for name in pairs(boxes) do
+        table.insert(boxNames, name)
+    end
+    return boxNames[math.random(#boxNames)]
+end
+
+-- Helper: Refresh the inventory GUI
+local function refreshInventory()
+    -- Try to find the main inventory frame
+    local mainGUI = plr.PlayerGui:FindFirstChild("MainGUI")
+    if not mainGUI then return end
+    
+    -- Try to close and reopen the inventory panel
+    local inventory = mainGUI:FindFirstChild("Inventory") or mainGUI:FindFirstChild("Game") and mainGUI.Game:FindFirstChild("Inventory")
+    if inventory then
+        -- If the inventory is visible, toggle it off and on quickly
+        if inventory.Visible then
+            inventory.Visible = false
+            task.wait(0.1)
+            inventory.Visible = true
+        else
+            inventory.Visible = true
+            task.wait(0.1)
+            inventory.Visible = false
+            task.wait(0.1)
+            inventory.Visible = true
+        end
+    else
+        -- Fallback: Try to find a toggle button for inventory
+        local toggleBtn = mainGUI:FindFirstChild("ToggleInventory") or mainGUI:FindFirstChild("InventoryButton")
+        if toggleBtn and toggleBtn:IsA("TextButton") then
+            toggleBtn:Activate()
+            task.wait(0.2)
+            toggleBtn:Activate()
+        end
+    end
+end
+
+-- Spawn function (identical to original vu265)
+local function spawnWeapon(weaponName)
+    pcall(function()
+        local boxModule = require(rs.Modules.BoxModule)
+        local itemDB = require(rs.Database.Sync.Item)
+        if weaponName and itemDB[weaponName] then
+            print("Spawning:", weaponName)
+            boxModule.OpenBox(getRandomBox(), weaponName)
+            -- Trigger the "New Item" popup (visual)
+            pcall(function()
+                local newItem = plr.PlayerGui.MainGUI.Inventory.NewItem
+                if newItem and newItem._G and newItem._G.NewItem then
+                    newItem._G.NewItem(weaponName, nil, nil, "Weapons", 1)
+                end
+            end)
+            -- Refresh inventory to show the new item
+            refreshInventory()
+            -- Show a notification (using a simple popup if possible)
+            print("[✓] Spawned " .. weaponName)
+        else
+            warn("[✗] Invalid weapon: " .. weaponName)
+        end
+    end)
+end
+
+-- Create the GUI (same as before)
+local gui = Instance.new("ScreenGui")
+gui.Name = "BeachSpawner"
+gui.Parent = plr.PlayerGui
+
+local frame = Instance.new("Frame")
+frame.Size = UDim2.new(0, 300, 0, 150)
+frame.Position = UDim2.new(0.5, -150, 0.5, -75)
+frame.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+frame.BackgroundTransparency = 0.2
+frame.BorderSizePixel = 0
+frame.Parent = gui
+
+local uic = Instance.new("UICorner", frame)
+uic.CornerRadius = UDim.new(0, 12)
+
+local title = Instance.new("TextLabel", frame)
+title.Size = UDim2.new(1, 0, 0, 30)
+title.BackgroundTransparency = 1
+title.Text = "Beach Hub - Spawner"
+title.TextColor3 = Color3.new(1, 1, 1)
+title.TextSize = 18
+title.Font = Enum.Font.GothamBold
+
+local input = Instance.new("TextBox", frame)
+input.Size = UDim2.new(0.8, 0, 0, 30)
+input.Position = UDim2.new(0.1, 0, 0.3, 0)
+input.BackgroundColor3 = Color3.fromRGB(60, 60, 70)
+input.TextColor3 = Color3.new(1, 1, 1)
+input.PlaceholderText = "Weapon name (e.g., Raygun)"
+input.Text = ""
+input.Font = Enum.Font.Gotham
+input.TextSize = 14
+input.ClearTextOnFocus = false
+
+local spawnBtn = Instance.new("TextButton", frame)
+spawnBtn.Size = UDim2.new(0.6, 0, 0, 35)
+spawnBtn.Position = UDim2.new(0.2, 0, 0.65, 0)
+spawnBtn.BackgroundColor3 = Color3.fromRGB(255, 100, 50)
+spawnBtn.Text = "Spawn Weapon"
+spawnBtn.TextColor3 = Color3.new(1, 1, 1)
+spawnBtn.TextSize = 16
+spawnBtn.Font = Enum.Font.GothamBold
+spawnBtn.BorderSizePixel = 0
+
+local uic2 = Instance.new("UICorner", spawnBtn)
+uic2.CornerRadius = UDim.new(0, 8)
+
+spawnBtn.MouseButton1Click:Connect(function()
+    local name = input.Text:gsub("^%s+", ""):gsub("%s+$", "")
+    if name ~= "" then
+        spawnWeapon(name)
+    else
+        print("Enter a weapon name")
+    end
+end)
+
+-- Make frame draggable
+local dragging = false
+local dragStart, frameStart
+frame.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = true
+        dragStart = input.Position
+        frameStart = frame.Position
+    end
+end)
+frame.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = false
+    end
+end)
+game:GetService("UserInputService").InputChanged:Connect(function(input)
+    if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+        local delta = input.Position - dragStart
+        frame.Position = UDim2.new(frameStart.X.Scale, frameStart.X.Offset + delta.X, frameStart.Y.Scale, frameStart.Y.Offset + delta.Y)
+    end
+end)
